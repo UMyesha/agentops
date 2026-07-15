@@ -1,0 +1,39 @@
+# Local infrastructure for AgentOps.
+# Postgres is required for the MVP. Redis is provisioned now but only wired up
+# in Phase 5 (BullMQ background execution) — MVP execution is synchronous.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentops-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agentops
+      POSTGRES_PASSWORD: agentops
+      POSTGRES_DB: agentops
+    ports:
+      - "5432:5432"
+    volumes:
+      - agentops_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentops"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: agentops-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - agentops_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  agentops_pgdata:
+  agentops_redisdata:

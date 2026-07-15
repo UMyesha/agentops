@@ -1,0 +1,348 @@
+// AgentOps — Prisma schema
+// AI agent observability, debugging, and evaluation platform.
+//
+// Design notes:
+//  - Enums model every status so the DB enforces the state machine.
+//  - Json fields hold structured tool/agent inputs & outputs and eval rubrics.
+//  - Indexes target the columns the dashboard + trace pages query on.
+//  - Retries are modeled as linked runs (parentRunId + retryCount) rather than
+//    mutating a run in place — this preserves full audit history.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  RETRIED
+}
+
+enum StepStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum ToolCallStatus {
+  SUCCESS
+  ERROR
+}
+
+enum AgentRole {
+  PLANNER
+  CODE_SEARCH
+  DOCUMENTATION
+  VALIDATOR
+  EVALUATOR
+}
+
+enum GuardrailType {
+  EMPTY_OUTPUT
+  TOO_SHORT
+  MISSING_SECTION
+  MALFORMED_OUTPUT
+  UNSUPPORTED_CLAIM
+  TOOL_FAILURE
+  SKIPPED_STEP
+  UNSAFE_RESPONSE
+}
+
+enum EvalResult {
+  PASS
+  FAIL
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auth (Auth.js / NextAuth v5 with Prisma adapter)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String? // set for credentials login; null for pure-OAuth users
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts  Account[]
+  sessions  Session[]
+  projects  Project[]
+  runs      AgentRun[] @relation("RunTriggeredBy")
+  auditLogs AuditLog[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Core domain
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  workflows Workflow[]
+  runs      AgentRun[]
+
+  @@index([ownerId])
+}
+
+model Workflow {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  // Ordered pipeline definition (agent roles + tool availability).
+  definition  Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  agents  Agent[]
+  runs    AgentRun[]
+
+  @@index([projectId])
+}
+
+model Agent {
+  id          String    @id @default(cuid())
+  workflowId  String
+  role        AgentRole
+  name        String
+  description String?
+  order       Int
+  model       String    @default("mock")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workflow       Workflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  steps          RunStep[]
+  promptVersions PromptVersion[]
+
+  @@index([workflowId])
+}
+
+// Global registry of MCP-style tools. Referenced by ToolCall by name.
+model Tool {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  description  String
+  inputSchema  Json
+  outputSchema Json
+  createdAt    DateTime @default(now())
+}
+
+model AgentRun {
+  id           String    @id @default(cuid())
+  workflowId   String
+  projectId    String
+  triggeredById String?
+  status       RunStatus @default(QUEUED)
+
+  input       Json
+  finalOutput Json?
+
+  // Observability roll-ups.
+  totalLatencyMs Int?
+  estTokens      Int?
+  estCostUsd     Float?
+  model          String?
+  failureReason  String?
+
+  // Retry lineage — a retried run points at its parent.
+  retryCount Int     @default(0)
+  parentRunId String?
+
+  // Snapshot of prompt versions used to produce this run.
+  promptVersionSnapshot Json?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workflow    Workflow             @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  project     Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  triggeredBy User?                @relation("RunTriggeredBy", fields: [triggeredById], references: [id], onDelete: SetNull)
+  parentRun   AgentRun?            @relation("RunRetries", fields: [parentRunId], references: [id], onDelete: SetNull)
+  retries     AgentRun[]           @relation("RunRetries")
+  steps       RunStep[]
+  toolCalls   ToolCall[]
+  guardrails  GuardrailViolation[]
+  evaluation  EvaluationResult?
+
+  @@index([projectId, status])
+  @@index([workflowId])
+  @@index([createdAt])
+  @@index([parentRunId])
+}
+
+model RunStep {
+  id      String     @id @default(cuid())
+  runId   String
+  agentId String
+  role    AgentRole
+  order   Int
+  status  StepStatus @default(PENDING)
+
+  input  Json
+  output Json?
+  error  String?
+
+  latencyMs Int?
+  estTokens Int?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  run       AgentRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  agent     Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  toolCalls ToolCall[]
+
+  @@index([runId, order])
+  @@index([agentId])
+}
+
+model ToolCall {
+  id       String         @id @default(cuid())
+  runId    String
+  stepId   String
+  toolName String
+  status   ToolCallStatus @default(SUCCESS)
+
+  input  Json
+  output Json?
+  error  String?
+
+  latencyMs Int?
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  run  AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  step RunStep  @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([stepId])
+  @@index([toolName])
+}
+
+model EvaluationResult {
+  id     String     @id @default(cuid())
+  runId  String     @unique
+  score  Int // 0–100
+  result EvalResult
+
+  // Per-criterion breakdown: [{ id, label, passed, weight, note }]
+  rubric   Json
+  feedback String
+
+  createdAt DateTime @default(now())
+
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([score])
+}
+
+model GuardrailViolation {
+  id      String        @id @default(cuid())
+  runId   String
+  stepId  String?
+  type    GuardrailType
+  message String
+  details Json?
+
+  createdAt DateTime @default(now())
+
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([type])
+}
+
+model PromptVersion {
+  id       String   @id @default(cuid())
+  agentId  String
+  version  Int
+  content  String   @db.Text
+  notes    String?
+  isActive Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, version])
+  @@index([agentId])
+}
+
+// Append-only log of side-effecting events (runs started, retried, evaluated).
+model AuditLog {
+  id       String   @id @default(cuid())
+  userId   String?
+  action   String
+  entity   String
+  entityId String
+  metadata Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@index([userId])
+}
