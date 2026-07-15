@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { ChevronRight, Wrench, AlertTriangle } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, Wrench, AlertTriangle, ExternalLink } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -68,6 +69,13 @@ export function ToolCallRow({
             <JsonViewer data={toolCall.output} defaultOpen={false} />
           </div>
         </div>
+        <Link
+          href={`/tool-calls/${toolCall.id}`}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <ExternalLink className="size-3" />
+          Open tool call detail
+        </Link>
       </CollapsibleContent>
     </Collapsible>
   );
