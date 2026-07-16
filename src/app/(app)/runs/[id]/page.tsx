@@ -4,6 +4,7 @@ import { ArrowLeft, Workflow as WorkflowIcon } from "lucide-react";
 import { getSessionUserId } from "@/lib/queries/_common";
 import { getRunDetail } from "@/lib/queries/runs";
 import { StatusBadge } from "@/components/trace/StatusBadge";
+import { RunStatusPoller } from "@/components/runs/RunStatusPoller";
 import { TraceTimeline } from "@/components/trace/TraceTimeline";
 import { EvaluationPanel } from "@/components/trace/EvaluationPanel";
 import { GuardrailPanel } from "@/components/trace/GuardrailPanel";
@@ -65,6 +66,9 @@ export default async function RunDetailPage({
           {run.workflow.name}
         </Link>
       </div>
+
+      {/* Safety net: refreshes the page if the run is still in flight. */}
+      <RunStatusPoller runId={run.id} status={run.status} />
 
       {/* Failure banner */}
       {run.status === "FAILED" && run.failureReason && (
