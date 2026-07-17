@@ -34,6 +34,35 @@ export async function getWorkflowById(
   });
 }
 
+// ─── Execution ───────────────────────────────────────────────────────────────
+
+// Only what the runner needs: ordered agents plus each one's ACTIVE prompt
+// version. (Deliberately does not pull run history like getWorkflowById does.)
+const workflowForExecutionInclude = {
+  project: { select: { id: true, ownerId: true } },
+  agents: {
+    orderBy: { order: "asc" },
+    include: {
+      promptVersions: { where: { isActive: true } },
+    },
+  },
+} satisfies Prisma.WorkflowInclude;
+
+export type WorkflowForExecution = Prisma.WorkflowGetPayload<{
+  include: typeof workflowForExecutionInclude;
+}>;
+
+/** Load a workflow for execution, scoped to the owning user. Null if not owned. */
+export async function getWorkflowForExecution(
+  id: string,
+  userId: string
+): Promise<WorkflowForExecution | null> {
+  return db.workflow.findFirst({
+    where: { id, project: { ownerId: userId } },
+    include: workflowForExecutionInclude,
+  });
+}
+
 /** Global MCP-style tool registry (not user-scoped — tools are shared). */
 export function listTools() {
   return db.tool.findMany({ orderBy: { name: "asc" } });

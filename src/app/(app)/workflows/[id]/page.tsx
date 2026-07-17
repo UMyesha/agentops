@@ -11,6 +11,7 @@ import { getWorkflowById, listTools } from "@/lib/queries/workflows";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RunsTable } from "@/components/runs/RunsTable";
+import { RunWorkflowButton } from "@/components/runs/RunWorkflowButton";
 import { PromptVersionList } from "@/components/prompts/PromptVersionList";
 
 function roleLabel(role: string): string {
@@ -63,6 +64,9 @@ export default async function WorkflowDetailPage({
           {workflow.project.name}
         </Link>
       </div>
+
+      {/* Trigger a live run of this workflow. */}
+      <RunWorkflowButton workflowId={workflow.id} />
 
       {/* Agents */}
       <section className="space-y-3">
