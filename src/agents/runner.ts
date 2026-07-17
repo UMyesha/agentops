@@ -7,6 +7,8 @@ import { PIPELINE, type RunState } from "@/agents/definitions";
 import { preflightWorkflow } from "@/agents/preflight";
 import type { AgentContext, AgentProvider } from "@/agents/provider";
 import { runTool } from "@/tools/registry";
+import { upsertEvaluation } from "@/evals/evaluationService";
+import { runGuardrails } from "@/guardrails/service";
 import { MOCK_REPO } from "@/agents/definitions/mock-repo";
 import type { AgentRoleName, OnboardingDoc } from "@/types";
 import type { EvaluatorOutput } from "@/agents/definitions/types";
@@ -245,23 +247,52 @@ export async function executeWorkflowRun(
         metadata: { role: def.role, stepId: step.id, message },
       });
 
+      // Guardrails run over the persisted (partial) trace — non-fatal.
+      await finalizeGuardrails(run.id, userId);
+
       return { runId: run.id, status: "FAILED" };
     }
   }
 
-  // ── 4. Persist the evaluation ─────────────────────────────────────────────
-  // The evaluator's output carries score/result/rubric/feedback, so everything
-  // EvaluationResult needs is here (feedback is a NOT NULL column).
+  // ── 4. Persist the evaluation — REQUIRED for COMPLETED ────────────────────
+  // A valid, persisted EvaluationResult is part of what "completed" means. The
+  // shared upsertEvaluation validates the outcome and throws on any failure; if
+  // it throws we route through the SAME failure handling as a step failure —
+  // the run becomes FAILED, never COMPLETED-without-evaluation.
+  //
+  // We keep the Documentation Agent's valid document as finalOutput even on this
+  // failure path, so the guardrail engine does not misread it as EMPTY_OUTPUT
+  // just because evaluation persistence failed.
+  const finalOutput = json(state.documentation);
   const evaluation = state.evaluator!;
-  await db.evaluationResult.create({
-    data: {
-      runId: run.id,
-      score: evaluation.score,
-      result: evaluation.result,
-      rubric: json(evaluation.rubric),
-      feedback: evaluation.feedback,
-    },
-  });
+
+  try {
+    await upsertEvaluation(run.id, evaluation);
+  } catch (err) {
+    const message = messageOf(err);
+    const failedAt = new Date();
+    await db.agentRun.update({
+      where: { id: run.id },
+      data: {
+        status: "FAILED",
+        failureReason: `Evaluation persistence failed: ${message}`,
+        finalOutput, // preserve the produced document
+        completedAt: failedAt,
+        totalLatencyMs: failedAt.getTime() - startedAt.getTime(),
+        estTokens: totalTokens,
+        estCostUsd: estimateCost(provider.model, totalTokens),
+      },
+    });
+    await logAudit({
+      userId,
+      action: "run.failed",
+      entity: "AgentRun",
+      entityId: run.id,
+      metadata: { stage: "evaluation", message },
+    });
+    await finalizeGuardrails(run.id, userId);
+    return { runId: run.id, status: "FAILED" };
+  }
 
   // ── 5. Complete the run ───────────────────────────────────────────────────
   const completedAt = new Date();
@@ -269,7 +300,7 @@ export async function executeWorkflowRun(
     where: { id: run.id },
     data: {
       status: "COMPLETED",
-      finalOutput: json(state.documentation),
+      finalOutput,
       completedAt,
       totalLatencyMs: completedAt.getTime() - startedAt.getTime(),
       estTokens: totalTokens,
@@ -284,5 +315,21 @@ export async function executeWorkflowRun(
     metadata: { score: evaluation.score, result: evaluation.result },
   });
 
+  // ── 6. Guardrails (non-fatal, over the persisted trace) ───────────────────
+  await finalizeGuardrails(run.id, userId);
+
   return { runId: run.id, status: "COMPLETED" };
+}
+
+/**
+ * Run the guardrail engine at finalization. Non-fatal: guardrail analysis must
+ * never crash the run it observes (runGuardrails also swallows internally; this
+ * is defense in depth).
+ */
+async function finalizeGuardrails(runId: string, userId: string) {
+  try {
+    await runGuardrails({ runId, userId });
+  } catch (err) {
+    console.error("[guardrails] non-fatal failure at finalization:", err);
+  }
 }

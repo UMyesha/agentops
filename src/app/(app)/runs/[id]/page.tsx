@@ -5,6 +5,7 @@ import { getSessionUserId } from "@/lib/queries/_common";
 import { getRunDetail } from "@/lib/queries/runs";
 import { StatusBadge } from "@/components/trace/StatusBadge";
 import { RunStatusPoller } from "@/components/runs/RunStatusPoller";
+import { ReevaluateButton } from "@/components/runs/ReevaluateButton";
 import { TraceTimeline } from "@/components/trace/TraceTimeline";
 import { EvaluationPanel } from "@/components/trace/EvaluationPanel";
 import { GuardrailPanel } from "@/components/trace/GuardrailPanel";
@@ -116,7 +117,12 @@ export default async function RunDetailPage({
         <TabsContent value="output">
           <FinalOutputViewer output={run.finalOutput} />
         </TabsContent>
-        <TabsContent value="evaluation">
+        <TabsContent value="evaluation" className="space-y-4">
+          {run.status === "COMPLETED" && run.finalOutput != null && (
+            <div className="flex items-center justify-end">
+              <ReevaluateButton runId={run.id} />
+            </div>
+          )}
           <EvaluationPanel evaluation={run.evaluation} />
         </TabsContent>
         <TabsContent value="guardrails">

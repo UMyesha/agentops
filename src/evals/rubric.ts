@@ -4,6 +4,15 @@ import type {
   OnboardingDoc,
   RubricCriterion,
 } from "@/types";
+import { onboardingDocSchema } from "@/tools/schemas";
+
+const EMPTY_DOC: OnboardingDoc = {
+  projectOverview: "",
+  setupInstructions: "",
+  folderStructure: "",
+  keyFiles: [],
+  developmentWorkflow: "",
+};
 
 /** A run passes at or above this score. */
 export const PASS_THRESHOLD = 70;
@@ -158,4 +167,28 @@ export function scoreOnboardingDoc(
           .join("; ")}.`;
 
   return { score, result, rubric, feedback };
+}
+
+/**
+ * The single scoring entry point for a run's `finalOutput` of unknown shape.
+ * Shared by the `scoreOutput` tool (the runner's Evaluator agent) and the
+ * re-evaluation service, so evaluation has exactly one implementation.
+ *
+ * A null or structurally-invalid document scores against an empty document
+ * (→ 0 / FAIL) rather than throwing — the caller still gets a well-formed
+ * EvaluationOutcome to persist.
+ */
+export function scoreFinalOutput(
+  finalOutput: unknown,
+  repo: MockRepo
+): EvaluationOutcome {
+  const parsed = onboardingDocSchema.safeParse(finalOutput);
+  if (!parsed.success) {
+    const outcome = scoreOnboardingDoc(EMPTY_DOC, repo);
+    return {
+      ...outcome,
+      feedback: `Document did not match the expected onboarding structure. ${outcome.feedback}`,
+    };
+  }
+  return scoreOnboardingDoc(parsed.data, repo);
 }
