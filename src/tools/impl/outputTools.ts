@@ -1,9 +1,8 @@
 import type { ToolContext, OnboardingDoc } from "@/types";
-import { onboardingDocSchema } from "@/tools/schemas";
-import { scoreOnboardingDoc } from "@/evals/rubric";
+import { scoreFinalOutput } from "@/evals/rubric";
 
 /** The sections an onboarding document must contain. */
-const REQUIRED_SECTIONS: (keyof OnboardingDoc)[] = [
+export const REQUIRED_SECTIONS: (keyof OnboardingDoc)[] = [
   "projectOverview",
   "setupInstructions",
   "folderStructure",
@@ -36,26 +35,9 @@ export function validateOutput(input: { document: unknown }) {
 /**
  * Rubric scoring. Returns score + result + rubric + feedback — everything the
  * EvaluationResult row needs (feedback is NOT NULL), so the runner never has to
- * reach into tool internals to build it.
+ * reach into tool internals to build it. Delegates to the shared
+ * scoreFinalOutput so evaluation has exactly one implementation.
  */
 export function scoreOutput(input: { document: unknown }, ctx: ToolContext) {
-  const parsed = onboardingDocSchema.safeParse(input.document);
-  if (!parsed.success) {
-    // An unparseable document scores zero rather than crashing the evaluator.
-    const outcome = scoreOnboardingDoc(
-      {
-        projectOverview: "",
-        setupInstructions: "",
-        folderStructure: "",
-        keyFiles: [],
-        developmentWorkflow: "",
-      },
-      ctx.repo
-    );
-    return {
-      ...outcome,
-      feedback: `Document did not match the expected onboarding structure. ${outcome.feedback}`,
-    };
-  }
-  return scoreOnboardingDoc(parsed.data, ctx.repo);
+  return scoreFinalOutput(input.document, ctx.repo);
 }

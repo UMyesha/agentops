@@ -24,6 +24,17 @@ export const TOOL_NAMES = [
 
 export type ToolName = (typeof TOOL_NAMES)[number];
 
+/** Mirrors the Prisma `GuardrailType` enum (kept here so pure guardrail rules stay DB-agnostic). */
+export type GuardrailTypeName =
+  | "EMPTY_OUTPUT"
+  | "TOO_SHORT"
+  | "MISSING_SECTION"
+  | "MALFORMED_OUTPUT"
+  | "UNSUPPORTED_CLAIM"
+  | "TOOL_FAILURE"
+  | "SKIPPED_STEP"
+  | "UNSAFE_RESPONSE";
+
 /**
  * A tool carries Zod schemas so both its input and output are validated at
  * runtime by the central runTool() wrapper. (The DB `Tool` rows keep a

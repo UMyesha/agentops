@@ -6,7 +6,11 @@ export type AuditAction =
   | "run.started"
   | "tool.failed"
   | "run.completed"
-  | "run.failed";
+  | "run.failed"
+  | "evaluation.created"
+  | "evaluation.updated"
+  | "guardrails.completed"
+  | "guardrail.violation_created";
 
 /**
  * Append an AuditLog row.

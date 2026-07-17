@@ -35,6 +35,9 @@ const mocks = vi.hoisted(() => {
         state.runUpdates.push({ where, data });
         return { id: where.id, ...data };
       },
+      // Phase 4 guardrail finalization loads the run here; returning null makes
+      // the guardrail pass a clean no-op in these runner-focused tests.
+      findUnique: async () => null,
     },
     runStep: {
       create: async ({ data }: any) => {
@@ -55,9 +58,11 @@ const mocks = vi.hoisted(() => {
       },
     },
     evaluationResult: {
-      create: async ({ data }: any) => {
-        state.evaluations.push(data);
-        return data;
+      // Phase 4: the runner now persists via the shared upsertEvaluation.
+      findUnique: async () => null,
+      upsert: async ({ create }: any) => {
+        state.evaluations.push(create);
+        return create;
       },
     },
     auditLog: {
