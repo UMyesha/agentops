@@ -16,6 +16,12 @@ export interface AgentContext {
   repo: MockRepo;
   /** Tools this agent may call (already enforced inside callTool). */
   tools: readonly ToolName[];
+  /**
+   * The 1-based bounded retry attempt for this run (job.attemptsMade + 1).
+   * Lets a provider behave deterministically across retries — used only by the
+   * gated mock transient-failure trigger; real providers ignore it.
+   */
+  attempt: number;
   callTool: (name: string, input: unknown) => Promise<unknown>;
 }
 

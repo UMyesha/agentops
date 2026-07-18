@@ -10,7 +10,14 @@ export type AuditAction =
   | "evaluation.created"
   | "evaluation.updated"
   | "guardrails.completed"
-  | "guardrail.violation_created";
+  | "guardrail.violation_created"
+  // Phase 5 — queued execution & retries
+  | "run.queued"
+  | "run.enqueue_failed"
+  | "run.worker_started"
+  | "run.retry_scheduled"
+  | "run.worker_completed"
+  | "run.worker_failed";
 
 /**
  * Append an AuditLog row.

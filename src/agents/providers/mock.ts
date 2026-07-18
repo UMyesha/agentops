@@ -1,6 +1,34 @@
 import type { AgentContext, AgentProvider, AgentResult } from "@/agents/provider";
 import type { MockRepo, OnboardingDoc } from "@/types";
 import { estimateTokens } from "@/lib/metrics";
+import { RetryableRunError } from "@/agents/errors";
+import { retryTriggersEnabled } from "@/queue/config";
+
+// Synthetic retryable-failure phrases (test-only). They throw a
+// RetryableRunError from the Planner step, but ONLY when the gate is on
+// (AI_PROVIDER=mock AND AGENTOPS_ENABLE_RETRY_TEST_TRIGGERS=true). Otherwise
+// they are inert plain text. Distinct from the ungated "simulate failure"
+// business failure (a deterministic tool failure handled elsewhere).
+const TRANSIENT_ALWAYS = "simulate transient failure always";
+const TRANSIENT_ONCE = "simulate transient failure once";
+
+function maybeThrowSyntheticTransient(ctx: AgentContext) {
+  if (ctx.role !== "PLANNER") return; // fail deterministically at the first step
+  if (!retryTriggersEnabled()) return; // gated off → inert
+  const req = String(
+    (ctx.input as { request?: string } | null)?.request ?? ""
+  ).toLowerCase();
+  if (req.includes(TRANSIENT_ALWAYS)) {
+    throw new RetryableRunError(
+      "Synthetic transient failure (always) [gated test trigger]"
+    );
+  }
+  if (req.includes(TRANSIENT_ONCE) && ctx.attempt < 2) {
+    throw new RetryableRunError(
+      `Synthetic transient failure (attempt ${ctx.attempt}) [gated test trigger]`
+    );
+  }
+}
 
 /**
  * Deterministic, dependency-free implementation of all five agents.
@@ -113,6 +141,7 @@ export class MockAgentProvider implements AgentProvider {
   readonly model = "mock";
 
   async run(ctx: AgentContext): Promise<AgentResult> {
+    maybeThrowSyntheticTransient(ctx);
     const output = await this.dispatch(ctx);
     return {
       output,

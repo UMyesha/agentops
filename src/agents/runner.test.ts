@@ -35,6 +35,14 @@ const mocks = vi.hoisted(() => {
         state.runUpdates.push({ where, data });
         return { id: where.id, ...data };
       },
+      // Phase 5: executeExistingRun loads the created (QUEUED) run here…
+      findFirst: async () => state.runs[state.runs.length - 1] ?? null,
+      // …then claims it (QUEUED→RUNNING) via updateMany. Record it as a run
+      // update so the RUNNING-transition assertions still hold, and claim once.
+      updateMany: async ({ where, data }: any) => {
+        state.runUpdates.push({ where, data });
+        return { count: 1 };
+      },
       // Phase 4 guardrail finalization loads the run here; returning null makes
       // the guardrail pass a clean no-op in these runner-focused tests.
       findUnique: async () => null,
@@ -244,9 +252,13 @@ describe("runner — successful lifecycle", () => {
   it("writes the run audit trail", async () => {
     await executeWorkflowRun({ ...baseOpts, provider: new MockAgentProvider() });
     expect(auditActions()).toEqual(
-      expect.arrayContaining(["run.created", "run.started", "run.completed"])
+      expect.arrayContaining([
+        "run.created",
+        "run.worker_started",
+        "run.worker_completed",
+      ])
     );
-    expect(auditActions()).not.toContain("run.failed");
+    expect(auditActions()).not.toContain("run.worker_failed");
   });
 });
 
@@ -319,8 +331,8 @@ describe("runner — failure lifecycle", () => {
     await executeWorkflowRun(failOpts);
     expect(s.evaluations).toHaveLength(0);
     expect(auditActions()).toContain("tool.failed");
-    expect(auditActions()).toContain("run.failed");
-    expect(auditActions()).not.toContain("run.completed");
+    expect(auditActions()).toContain("run.worker_failed");
+    expect(auditActions()).not.toContain("run.worker_completed");
   });
 });
 

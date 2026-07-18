@@ -54,6 +54,7 @@ function contextFor(
     instructions: `You are the ${def.role} agent. Follow the contract.`,
     promptVersion: 2,
     model: "mock",
+    attempt: 1,
     input: def.buildInput(state),
     repo: MOCK_REPO,
     tools: def.tools,
