@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUserId } from "@/lib/queries/_common";
-import {
-  executeWorkflowRun,
-  WorkflowNotFoundError,
-} from "@/agents/runner";
+import { db } from "@/lib/db";
+import { logAudit } from "@/lib/audit";
+import { createQueuedRun, WorkflowNotFoundError } from "@/agents/runner";
 import { WorkflowConfigError } from "@/agents/preflight";
+import { enqueueAgentRun } from "@/queue/agentRunQueue";
 
 const bodySchema = z.object({
   request: z.string().min(1).max(1000).optional(),
@@ -15,13 +15,15 @@ const DEFAULT_REQUEST =
   "Generate onboarding documentation for a new developer joining this repository.";
 
 /**
- * POST /api/workflows/:id/runs — start a run.
+ * POST /api/workflows/:id/runs — enqueue a run (async).
  *
- * Synchronous by design: the pipeline is awaited, so the response carries the
- * run's terminal status. The only write route in Phase 3.
+ * Creates a QUEUED AgentRun, enqueues one BullMQ job (jobId = runId), and
+ * returns 202 immediately. A standalone worker executes it; the client polls
+ * QUEUED → RUNNING → COMPLETED|FAILED on the Run Detail page.
  *
- * 201 { runId, status }  · 400 invalid body · 401 unauthenticated
- * 404 workflow missing/not owned · 422 workflow or provider misconfigured
+ * 202 { runId, status:"QUEUED" } · 400 invalid body · 401 unauthenticated
+ * 404 workflow missing/not owned · 422 workflow/provider misconfigured
+ * 503 enqueue failed (the created run is marked FAILED — never left QUEUED)
  */
 export async function POST(
   req: Request,
@@ -38,9 +40,8 @@ export async function POST(
   try {
     raw = await req.json();
   } catch {
-    raw = {}; // an empty body is fine; we fall back to the default request
+    raw = {};
   }
-
   const parsed = bodySchema.safeParse(raw ?? {});
   if (!parsed.success) {
     return NextResponse.json(
@@ -54,16 +55,12 @@ export async function POST(
       { status: 400 }
     );
   }
+  const request = parsed.data.request?.trim() || DEFAULT_REQUEST;
 
+  // 1. Create the QUEUED run (preflight runs here → 404 / 422 before enqueue).
+  let runId: string;
   try {
-    const result = await executeWorkflowRun({
-      workflowId: id,
-      userId,
-      request: parsed.data.request?.trim() || DEFAULT_REQUEST,
-    });
-    // Note: a run that executes and FAILS is still a 201 — the request
-    // succeeded in creating a run; the run's outcome is data, not an HTTP error.
-    return NextResponse.json(result, { status: 201 });
+    ({ runId } = await createQueuedRun({ workflowId: id, userId, request }));
   } catch (err) {
     if (err instanceof WorkflowNotFoundError) {
       return NextResponse.json({ error: "Workflow not found" }, { status: 404 });
@@ -74,7 +71,46 @@ export async function POST(
         { status: 422 }
       );
     }
-    console.error("[api] run creation failed:", err);
+    console.error("[api] createQueuedRun failed:", err);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
+
+  // 2. Enqueue. If Redis/enqueue fails after the run exists, mark the run FAILED
+  //    (never leave it indefinitely QUEUED) and return 503. No in-request retry.
+  try {
+    await enqueueAgentRun({ runId, userId });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    try {
+      await db.agentRun.update({
+        where: { id: runId },
+        data: {
+          status: "FAILED",
+          failureReason: `Queue enqueue failed: ${message}`,
+          completedAt: new Date(),
+        },
+      });
+    } catch (dbErr) {
+      console.error("[api] failed to mark run FAILED after enqueue error:", dbErr);
+    }
+    await logAudit({
+      userId,
+      action: "run.enqueue_failed",
+      entity: "AgentRun",
+      entityId: runId,
+      metadata: { message },
+    });
+    return NextResponse.json(
+      { runId, error: "Failed to enqueue run for execution" },
+      { status: 503 }
+    );
+  }
+
+  await logAudit({
+    userId,
+    action: "run.queued",
+    entity: "AgentRun",
+    entityId: runId,
+  });
+  return NextResponse.json({ runId, status: "QUEUED" }, { status: 202 });
 }

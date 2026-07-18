@@ -8,15 +8,30 @@ import { TOOL_NAMES } from "@/types";
 // how the runner reacts to their success/failure — without a full fake DB for
 // evaluation/guardrail tables.
 const mocks = vi.hoisted(() => {
-  const state: any = { workflow: null, tools: [], runUpdates: [], audits: [] };
+  const state: any = {
+    workflow: null,
+    tools: [],
+    runUpdates: [],
+    audits: [],
+    created: null,
+  };
   const db = {
     workflow: { findFirst: async () => state.workflow },
     tool: { findMany: async () => state.tools },
     agentRun: {
-      create: async ({ data }: any) => ({ id: "run_1", ...data }),
+      create: async ({ data }: any) => {
+        state.created = { id: "run_1", ...data };
+        return state.created;
+      },
       update: async ({ where, data }: any) => {
         state.runUpdates.push(data);
         return { id: where.id, ...data };
+      },
+      // executeExistingRun loads the created QUEUED run, then claims it.
+      findFirst: async () => state.created,
+      updateMany: async ({ data }: any) => {
+        state.runUpdates.push(data);
+        return { count: 1 };
       },
     },
     runStep: {
@@ -113,8 +128,8 @@ describe("runner ↔ Phase 4 integration", () => {
     expect(update.finalOutput).toHaveProperty("projectOverview");
     // Guardrails still run at finalization for the now-FAILED run.
     expect(mocks.runGuardrails).toHaveBeenCalledWith({ runId: "run_1", userId: "user_1" });
-    expect(s.audits.map((a: any) => a.action)).toContain("run.failed");
-    expect(s.audits.map((a: any) => a.action)).not.toContain("run.completed");
+    expect(s.audits.map((a: any) => a.action)).toContain("run.worker_failed");
+    expect(s.audits.map((a: any) => a.action)).not.toContain("run.worker_completed");
   });
 
   it("guardrail failure is non-fatal — run stays COMPLETED", async () => {

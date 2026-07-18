@@ -5,6 +5,7 @@ import type {
 } from "openai/resources/chat/completions";
 import type { AgentContext, AgentProvider, AgentResult } from "@/agents/provider";
 import { TOOLS } from "@/tools/registry";
+import { RetryableRunError, isRetryable } from "@/agents/errors";
 
 /**
  * Real-model provider, enabled with AI_PROVIDER=openai.
@@ -54,12 +55,29 @@ export class OpenAIAgentProvider implements AgentProvider {
     let totalTokens = 0;
 
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-      const res = await this.client.chat.completions.create({
-        model: this.model,
-        messages,
-        ...(tools.length > 0 ? { tools } : {}),
-        response_format: { type: "json_object" },
-      });
+      // Map transient OpenAI/network failures to a RetryableRunError so the
+      // worker retries them (408/429/5xx, connection resets, timeouts). Other
+      // errors propagate unchanged and are treated as non-retryable.
+      // NOTE: this path is NOT runtime-verified without an API key.
+      let res;
+      try {
+        res = await this.client.chat.completions.create({
+          model: this.model,
+          messages,
+          ...(tools.length > 0 ? { tools } : {}),
+          response_format: { type: "json_object" },
+        });
+      } catch (err) {
+        if (isRetryable(err)) {
+          throw new RetryableRunError(
+            `OpenAI request failed transiently: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+            err
+          );
+        }
+        throw err;
+      }
 
       totalTokens += res.usage?.total_tokens ?? 0;
       const msg = res.choices[0]?.message;
