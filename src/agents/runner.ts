@@ -554,7 +554,11 @@ async function finalizeFailed(params: {
     action: "run.worker_failed",
     entity: "AgentRun",
     entityId: runId,
-    metadata: { reason },
+    // `retryable` is a persisted structured signal (not env-derived): a
+    // retry-exhausted failure came from a retryable error class; a business
+    // failure did not. runStatusCopy reads this to decide whether it may call a
+    // failure non-retryable. No secrets — `reason` is an internal message only.
+    metadata: { reason, retryable: kind === "retry_exhausted" },
   });
   await finalizeGuardrails(runId, userId);
   return { kind, runId };

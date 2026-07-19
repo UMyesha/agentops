@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { getSessionUserId } from "@/lib/queries/_common";
 import { getWorkflowById, listTools } from "@/lib/queries/workflows";
+import { configuredProviderName } from "@/lib/appConfig";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RunsTable } from "@/components/runs/RunsTable";
@@ -65,8 +66,13 @@ export default async function WorkflowDetailPage({
         </Link>
       </div>
 
-      {/* Trigger a live run of this workflow. */}
-      <RunWorkflowButton workflowId={workflow.id} />
+      {/* Trigger a queued run of this workflow. Agents + provider are passed as
+          plain props from this server component — no extra API route. */}
+      <RunWorkflowButton
+        workflowId={workflow.id}
+        provider={configuredProviderName()}
+        agents={workflow.agents.map((a) => ({ name: a.name, role: a.role }))}
+      />
 
       {/* Agents */}
       <section className="space-y-3">

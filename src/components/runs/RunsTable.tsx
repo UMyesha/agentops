@@ -9,7 +9,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Activity } from "lucide-react";
 import { StatusBadge } from "@/components/trace/StatusBadge";
+import { EmptyState } from "@/components/EmptyState";
 import { formatCost, formatLatency, timeAgo } from "@/lib/utils";
 import type { RunListItem } from "@/lib/queries/runs";
 
@@ -18,14 +20,16 @@ export function RunsTable({ runs }: { runs: RunListItem[] }) {
 
   if (runs.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
-        No runs yet.
-      </div>
+      <EmptyState
+        icon={Activity}
+        title="No runs yet"
+        description="Run a workflow to see it traced here — every step, tool call, evaluation, and guardrail."
+      />
     );
   }
 
   return (
-    <div className="rounded-lg border">
+    <div className="overflow-x-auto rounded-lg border">
       <Table>
         <TableHeader>
           <TableRow>

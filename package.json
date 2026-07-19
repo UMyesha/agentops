@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "AI agent observability, debugging, and evaluation platform",
+  "engines": {
+    "node": ">=20 <21"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
@@ -25,6 +28,7 @@
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "^6.2.1",
     "@radix-ui/react-collapsible": "^1.1.16",
+    "@radix-ui/react-dialog": "^1.1.19",
     "@radix-ui/react-separator": "^1.1.11",
     "@radix-ui/react-slot": "^1.1.1",
     "@radix-ui/react-tabs": "^1.1.17",
@@ -40,8 +44,10 @@
     "openai": "^4.104.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "server-only": "^0.0.1",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.23.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -57,7 +63,6 @@
     "postcss": "^8.4.49",
     "prisma": "^6.2.1",
     "tailwindcss": "^3.4.17",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^2.1.9"
   }

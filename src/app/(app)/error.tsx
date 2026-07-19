@@ -18,15 +18,20 @@ export default function AppError({
   }, [error]);
 
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
+    <div
+      role="alert"
+      className="flex min-h-[60vh] flex-col items-center justify-center text-center"
+    >
       <AlertTriangle className="mb-4 size-10 text-destructive" />
-      <h1 className="text-xl font-semibold">Something went wrong</h1>
+      <h1 className="text-xl font-semibold">This page couldn&apos;t load</h1>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        An unexpected error occurred while loading this page.
+        Something interrupted loading this page. Your data is safe — retrying
+        usually resolves it. If it keeps happening, the app or database may be
+        temporarily unavailable.
       </p>
       {error.digest && (
         <p className="mt-2 font-mono text-xs text-muted-foreground">
-          {error.digest}
+          Reference: {error.digest}
         </p>
       )}
       <Button onClick={reset} className="mt-6">

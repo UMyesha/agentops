@@ -47,7 +47,7 @@ export function ReevaluateButton({ runId }: { runId: string }) {
         disabled={pending}
       >
         {pending ? (
-          <Loader2 className="size-4 animate-spin" />
+          <Loader2 className="size-4 motion-safe:animate-spin" />
         ) : done ? (
           <Check className="size-4 text-success" />
         ) : (
@@ -55,12 +55,16 @@ export function ReevaluateButton({ runId }: { runId: string }) {
         )}
         {pending ? "Re-evaluating…" : done ? "Updated" : "Re-evaluate"}
       </Button>
-      {error && (
-        <span className="inline-flex items-center gap-1 text-xs text-destructive">
-          <AlertTriangle className="size-3.5" />
-          {error}
-        </span>
-      )}
+      {/* Announce the result of the async re-evaluation to assistive tech. */}
+      <span aria-live="polite" className="inline-flex items-center gap-1 text-xs">
+        {done && <span className="text-success">Evaluation updated.</span>}
+        {error && (
+          <span className="inline-flex items-center gap-1 text-destructive">
+            <AlertTriangle className="size-3.5" />
+            {error}
+          </span>
+        )}
+      </span>
     </div>
   );
 }

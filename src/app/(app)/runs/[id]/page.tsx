@@ -1,10 +1,16 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, Workflow as WorkflowIcon } from "lucide-react";
+import { ArrowLeft, Workflow as WorkflowIcon, AlertTriangle } from "lucide-react";
 import { getSessionUserId } from "@/lib/queries/_common";
-import { getRunDetail } from "@/lib/queries/runs";
+import {
+  getRunDetail,
+  getRunAuditTrail,
+  retryableSignalFrom,
+} from "@/lib/queries/runs";
+import { runStatusCopy, isEnqueueFailure } from "@/lib/runStatusCopy";
 import { StatusBadge } from "@/components/trace/StatusBadge";
 import { RunStatusPoller } from "@/components/runs/RunStatusPoller";
+import { RunAuditTrail } from "@/components/runs/RunAuditTrail";
 import { ReevaluateButton } from "@/components/runs/ReevaluateButton";
 import { TraceTimeline } from "@/components/trace/TraceTimeline";
 import { EvaluationPanel } from "@/components/trace/EvaluationPanel";
@@ -34,10 +40,20 @@ export default async function RunDetailPage({
   const userId = await getSessionUserId();
   if (!userId) redirect("/login");
 
-  const run = await getRunDetail(id, userId);
+  const [run, auditTrail] = await Promise.all([
+    getRunDetail(id, userId),
+    getRunAuditTrail(id, userId),
+  ]);
   if (!run) notFound();
 
   const guardrailCount = run.guardrails.length;
+  const enqueueFailed = isEnqueueFailure(run.failureReason);
+  const copy = runStatusCopy({
+    status: run.status,
+    retryCount: run.retryCount,
+    failureReason: run.failureReason,
+    retryable: retryableSignalFrom(auditTrail),
+  });
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -69,13 +85,34 @@ export default async function RunDetailPage({
       </div>
 
       {/* Safety net: refreshes the page if the run is still in flight. */}
-      <RunStatusPoller runId={run.id} status={run.status} />
+      <RunStatusPoller
+        runId={run.id}
+        status={run.status}
+        retryCount={run.retryCount}
+      />
 
-      {/* Failure banner */}
-      {run.status === "FAILED" && run.failureReason && (
+      {/* Enqueue-failure banner: the run never reached a worker. */}
+      {enqueueFailed && (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div>
+            <p className="font-medium">Couldn&apos;t queue this run</p>
+            <p className="mt-0.5">
+              The execution service may be unavailable, so the run was never
+              picked up by a worker. Try running the workflow again once the
+              worker is back.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Failure banner (non-enqueue failures): show status copy + reason. */}
+      {run.status === "FAILED" && !enqueueFailed && (
         <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          <span className="font-medium">Failure reason: </span>
-          {run.failureReason}
+          <p className="font-medium">{copy.detail}</p>
+          {run.failureReason && (
+            <p className="mt-0.5 text-destructive/90">{run.failureReason}</p>
+          )}
         </div>
       )}
 
@@ -88,6 +125,9 @@ export default async function RunDetailPage({
         <Meta label="Retries" value={run.retryCount} />
         <Meta label="Steps" value={run.steps.length} />
       </dl>
+
+      {/* Execution / retry history from the audit log. */}
+      <RunAuditTrail entries={auditTrail} />
 
       {/* Trace timeline — the core */}
       <section className="space-y-3">
