@@ -69,6 +69,39 @@ describe("worker handleJob", () => {
     );
   });
 
+  // retryAttempt is the CANONICAL 1-based execution attempt number persisted in
+  // audit metadata; the UI renders it as-is. A first activation must be 1 (not 0
+  // and not 2), and attemptsStarted must never receive an extra increment.
+  it("first activation yields retryAttempt 1 (never 0) and activation 1", async () => {
+    const execute = exec({ kind: "completed", runId: "run_1" });
+    await handleJob(fakeJob({ attemptsMade: 0, attemptsStarted: 1 }), "tok", execute);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ retryAttempt: 1, activation: 1 })
+    );
+  });
+
+  it("attempt numbers advance 1 → 2 → 3 across retries", async () => {
+    for (const [attemptsMade, expected] of [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+    ] as const) {
+      const execute = exec({ kind: "completed", runId: "run_1" });
+      await handleJob(fakeJob({ attemptsMade }), "tok", execute);
+      expect(execute).toHaveBeenCalledWith(
+        expect.objectContaining({ retryAttempt: expected })
+      );
+    }
+  });
+
+  it("does not add an extra increment to attemptsStarted", async () => {
+    const execute = exec({ kind: "completed", runId: "run_1" });
+    await handleJob(fakeJob({ attemptsMade: 0, attemptsStarted: 3 }), "tok", execute);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ activation: 3 })
+    );
+  });
+
   it("supplies a verifyLock that extends the BullMQ lock", async () => {
     const job = fakeJob();
     const execute = vi.fn(async (opts: any) => {
