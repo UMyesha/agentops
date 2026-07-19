@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { InfoTooltip } from "@/components/dashboard/InfoTooltip";
 import { cn } from "@/lib/utils";
 
 export function MetricCard({
@@ -8,19 +9,22 @@ export function MetricCard({
   sub,
   icon: Icon,
   accent,
+  tooltip,
 }: {
   label: string;
   value: React.ReactNode;
   sub?: string;
   icon: LucideIcon;
   accent?: "success" | "warning" | "destructive";
+  tooltip?: string;
 }) {
   return (
     <Card>
       <CardContent className="flex items-start justify-between p-5">
         <div className="space-y-1">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          <p className="flex items-center gap-1 text-xs uppercase tracking-wide text-muted-foreground">
             {label}
+            {tooltip && <InfoTooltip text={tooltip} />}
           </p>
           <p
             className={cn(

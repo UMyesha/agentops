@@ -14,7 +14,34 @@ interface ApiError {
   issues?: unknown;
 }
 
-export function RunWorkflowButton({ workflowId }: { workflowId: string }) {
+export interface RunWorkflowAgent {
+  name: string;
+  role: string;
+}
+
+function roleLabel(role: string): string {
+  return role
+    .toLowerCase()
+    .split("_")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+/**
+ * Trigger a queued run. The workflow's agents and the configured provider are
+ * passed in as plain props from the server-rendered workflow page (no extra API
+ * route). Before submitting, the user sees exactly what will run and that
+ * execution is asynchronous.
+ */
+export function RunWorkflowButton({
+  workflowId,
+  agents,
+  provider,
+}: {
+  workflowId: string;
+  agents: RunWorkflowAgent[];
+  provider: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [request, setRequest] = React.useState(DEFAULT_REQUEST);
@@ -37,7 +64,11 @@ export function RunWorkflowButton({ workflowId }: { workflowId: string }) {
         const detail = Array.isArray(body.issues)
           ? ` ${(body.issues as string[]).join(" ")}`
           : "";
-        setError(`${body.error ?? `Request failed (${res.status})`}${detail}`);
+        const fallback =
+          res.status === 503
+            ? "Couldn't queue the run — the execution service may be unavailable."
+            : `Request failed (${res.status})`;
+        setError(`${body.error ?? fallback}${detail}`);
         setPending(false);
         return;
       }
@@ -72,7 +103,7 @@ export function RunWorkflowButton({ workflowId }: { workflowId: string }) {
               type="button"
               onClick={() => setOpen(false)}
               disabled={pending}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+              className="text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               aria-label="Cancel"
             >
               <X className="size-4" />
@@ -90,8 +121,34 @@ export function RunWorkflowButton({ workflowId }: { workflowId: string }) {
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
           />
 
+          {/* What will run — agents + provider + async note. */}
+          <div className="rounded-md border bg-muted/40 p-3 text-xs">
+            <p className="font-medium text-foreground">
+              This queues {agents.length} agents (provider:{" "}
+              <span className="font-mono">{provider}</span>) and runs
+              asynchronously.
+            </p>
+            <ol className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-muted-foreground">
+              {agents.map((a, i) => (
+                <li key={a.name} className="flex items-center gap-1">
+                  <span className="tabular-nums">{i + 1}.</span>
+                  <span>{a.name}</span>
+                  <span className="text-muted-foreground/70">
+                    ({roleLabel(a.role)})
+                  </span>
+                  {i < agents.length - 1 && (
+                    <span className="text-muted-foreground/40">→</span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </div>
+
           {error && (
-            <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-xs text-destructive">
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-xs text-destructive"
+            >
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
               <span>{error}</span>
             </div>
@@ -100,15 +157,15 @@ export function RunWorkflowButton({ workflowId }: { workflowId: string }) {
           <div className="flex items-center gap-2">
             <Button type="submit" disabled={pending}>
               {pending ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 className="size-4 motion-safe:animate-spin" />
               ) : (
                 <Play className="size-4" />
               )}
-              {pending ? "Running pipeline…" : "Run workflow"}
+              {pending ? "Queuing…" : "Run workflow"}
             </Button>
             {pending && (
               <span className="text-xs text-muted-foreground">
-                Executing five agents — this runs synchronously.
+                Enqueuing the run — you&apos;ll be taken to its trace page.
               </span>
             )}
           </div>

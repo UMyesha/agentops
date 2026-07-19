@@ -4,6 +4,7 @@ import { FolderKanban, Workflow as WorkflowIcon, Activity } from "lucide-react";
 import { getSessionUserId } from "@/lib/queries/_common";
 import { listProjects } from "@/lib/queries/projects";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/EmptyState";
 import { timeAgo } from "@/lib/utils";
 
 export default async function ProjectsPage() {
@@ -22,9 +23,11 @@ export default async function ProjectsPage() {
       </div>
 
       {projects.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No projects yet.
-        </div>
+        <EmptyState
+          icon={FolderKanban}
+          title="No projects yet"
+          description="A seeded demo project appears here once the database is seeded (npm run db:seed)."
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((p) => (

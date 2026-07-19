@@ -18,6 +18,7 @@ import {
 } from "@/queue/agentRunQueue";
 import { executeExistingRun } from "@/agents/runner";
 import { RetryableRunError } from "@/agents/errors";
+import { validateWorkerEnv } from "@/lib/env";
 
 const cfg = getQueueConfig();
 
@@ -91,6 +92,9 @@ const processor = (job: Job<AgentRunJob>, token?: string) =>
   handleJob(job, token);
 
 function main() {
+  // Fail loudly on invalid required configuration before constructing a Worker.
+  validateWorkerEnv();
+
   if (!cfg.redisUrl) {
     console.error("[worker] REDIS_URL is not configured; exiting.");
     process.exit(1);

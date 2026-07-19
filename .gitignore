@@ -37,6 +37,7 @@ yarn-error.log*
 
 # local logs
 dev.log
+worker*.log
 
 # claude code — local-only, machine-specific settings
 .claude/settings.local.json

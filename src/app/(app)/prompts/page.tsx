@@ -8,6 +8,7 @@ import {
 } from "@/lib/queries/prompts";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/EmptyState";
 import { PromptVersionList } from "@/components/prompts/PromptVersionList";
 
 function roleLabel(role: string): string {
@@ -50,9 +51,11 @@ export default async function PromptsPage() {
       </div>
 
       {agents.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No agents or prompt versions yet.
-        </div>
+        <EmptyState
+          icon={GitBranch}
+          title="No prompt versions yet"
+          description="Agent prompt versions appear here once a workflow with agents exists."
+        />
       ) : (
         Array.from(groups.entries()).map(([workflowId, group]) => (
           <section key={workflowId} className="space-y-3">

@@ -9,6 +9,9 @@ export interface DashboardMetrics {
   successRate: number | null; // 0–100, null when no runs
   avgCompletedLatencyMs: number | null;
   avgEvalScore: number | null;
+  guardrailCount: number;
+  retriedRunCount: number;
+  activeRunCount: number;
   recentRuns: RunListItem[];
   recentErrors: {
     id: string;
@@ -36,6 +39,9 @@ export async function getDashboardMetrics(
     failedRuns,
     completedAgg,
     evalAgg,
+    guardrailCount,
+    retriedRunCount,
+    activeRunCount,
     recentRuns,
     recentFailed,
   ] = await Promise.all([
@@ -49,6 +55,14 @@ export async function getDashboardMetrics(
     db.evaluationResult.aggregate({
       where: { run: { ...where } },
       _avg: { score: true },
+    }),
+    // Guardrail violations across the user's runs.
+    db.guardrailViolation.count({ where: { run: { ...where } } }),
+    // Runs that were retried at least once (retryCount > 0 is a persisted signal).
+    db.agentRun.count({ where: { ...where, retryCount: { gt: 0 } } }),
+    // Runs currently in flight (queued or running).
+    db.agentRun.count({
+      where: { ...where, status: { in: ["QUEUED", "RUNNING"] } },
     }),
     db.agentRun.findMany({
       where,
@@ -73,6 +87,9 @@ export async function getDashboardMetrics(
       ? Math.round(completedAgg._avg.totalLatencyMs)
       : null,
     avgEvalScore: evalAgg._avg.score ? Math.round(evalAgg._avg.score) : null,
+    guardrailCount,
+    retriedRunCount,
+    activeRunCount,
     recentRuns,
     recentErrors: recentFailed.map((r) => ({
       id: r.id,

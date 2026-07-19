@@ -1,17 +1,20 @@
 import { signOut } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
+import { MobileNav } from "@/components/layout/MobileNav";
+import { Breadcrumb } from "@/components/layout/Breadcrumb";
 
 export function TopBar({ userEmail }: { userEmail?: string | null }) {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b bg-background px-6">
-      <div className="text-sm text-muted-foreground">
-        {/* Breadcrumb / page context slot — populated per-page in Phase 2. */}
-        Repository Onboarding Platform
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background px-4 sm:px-6">
+      <div className="flex min-w-0 items-center gap-2">
+        {/* Hamburger — visible only below md; opens the accessible Dialog nav. */}
+        <MobileNav />
+        <Breadcrumb />
       </div>
       <div className="flex items-center gap-3">
         {userEmail && (
-          <span className="hidden text-sm text-muted-foreground sm:inline">
+          <span className="hidden max-w-[12rem] truncate text-sm text-muted-foreground sm:inline">
             {userEmail}
           </span>
         )}
@@ -24,7 +27,7 @@ export function TopBar({ userEmail }: { userEmail?: string | null }) {
         >
           <Button variant="ghost" size="sm" type="submit">
             <LogOut className="size-4" />
-            Sign out
+            <span className="hidden sm:inline">Sign out</span>
           </Button>
         </form>
       </div>
