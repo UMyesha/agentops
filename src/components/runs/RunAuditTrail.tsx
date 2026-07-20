@@ -26,8 +26,13 @@ function attemptSuffix(entry: RunAuditEntry): string | null {
   const meta = entry.metadata;
   if (meta && typeof meta === "object" && "retryAttempt" in meta) {
     const n = (meta as { retryAttempt?: unknown }).retryAttempt;
-    // retryAttempt is the persisted attempt number → total executions.
-    if (typeof n === "number") return `attempt ${n + 1}`;
+    // `retryAttempt` is the CANONICAL 1-based execution attempt number, computed
+    // once in the worker as `job.attemptsMade + 1` and persisted verbatim in the
+    // audit metadata. It is already the attempt number — do NOT increment again
+    // here, or a first execution (retryAttempt 1) renders as "attempt 2".
+    if (typeof n === "number" && Number.isFinite(n) && n >= 1) {
+      return `attempt ${n}`;
+    }
   }
   return null;
 }
