@@ -6,6 +6,18 @@ AgentOps runs a multi-agent **Repository Onboarding** workflow and lets you insp
 
 > **Project status:** portfolio project. The default agent provider is a deterministic mock (no API key required); an OpenAI provider exists but has not been runtime-verified here. There are no claims of production usage, scale, or real users.
 
+## 🚀 Live demo
+
+**Try it now:** **[web-production-9827f.up.railway.app](https://web-production-9827f.up.railway.app)**
+
+Sign in with the seeded demo account:
+
+| Email | Password |
+| --- | --- |
+| `demo@agentops.dev` | `demo1234` |
+
+These are throwaway credentials for a public demo workspace — not real secrets. The deployment runs the **deterministic mock provider** (`AI_PROVIDER=mock`), so runs are reproducible and require no API key; nothing calls a paid LLM.
+
 ## Screenshots
 
 <!-- Screenshot placeholders — see docs/portfolio.md for the capture checklist. -->
@@ -125,7 +137,7 @@ The worker validates required configuration at startup and exits non-zero on inv
 
 ## Deployment
 
-One image, two processes (web via `npm start`, worker via `npm run worker`). See [`docs/deployment.md`](docs/deployment.md) and [`docker-compose.prod.yml`](docker-compose.prod.yml). Migrations run as a release step: `npx prisma migrate deploy`. A serverless-only host cannot run the long-lived worker.
+One image, two processes (web via `npm start`, worker via `npm run worker`). See [`docs/deployment.md`](docs/deployment.md) and [`docker-compose.prod.yml`](docker-compose.prod.yml). Migrations run as a release step: `npx prisma migrate deploy`. A serverless-only host cannot run the long-lived worker; the [live demo](#-live-demo) is deployed on a container platform that runs both processes.
 
 ## Commands
 
@@ -143,7 +155,7 @@ npm run db:studio  # browse the database
 ## Known limitations
 
 - The default provider is a deterministic mock; the OpenAI provider is unverified here (no API key).
-- Ships a single seeded demo workspace; not multi-tenant or hosted.
+- Ships a single seeded demo workspace; single-tenant, not a multi-tenant SaaS (the [live demo](#-live-demo) is one shared workspace).
 - At-least-once delivery (see delivery semantics above); no exactly-once guarantee is claimed.
 - No cancellation, scheduling/recurring runs, batch execution, or admin queue dashboard.
 - Retries keep only the final attempt's detailed trace (full history remains in the audit log).
